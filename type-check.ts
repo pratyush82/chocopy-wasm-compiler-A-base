@@ -226,7 +226,17 @@ export function tcStmt(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<n
           tExpr.iterable_cond = iterable_cond;
           var body:Stmt<any>[] = [];
           var print_expr:Expr<any> = {tag:"builtin1",name:"print",arg:tExpr.left};
-          body.push(tcStmt(env,locals,{tag:"expr",expr:print_expr}));
+          if(tExpr.cond === undefined)
+          {
+            body.push(tcStmt(env,locals,{tag:"expr",expr:print_expr}));
+          }
+          else
+          {
+            var ifbody:Stmt<any>[] = [];
+            ifbody.push(tcStmt(env,locals,{tag:"expr",expr:print_expr}));
+            var if_cond : Expr<any> = tExpr.cond;
+            body.push(tcStmt(env,locals,{tag:"if",els:[],cond:if_cond,thn:ifbody}));
+          }
           var update_Expr:Expr<any> = {tag:"method-call",method:"next",arguments:[],obj:tExpr.elem};
           body.push(tcStmt(env,locals,{tag:"expr",expr:update_Expr}));
           tExpr.body = body;
