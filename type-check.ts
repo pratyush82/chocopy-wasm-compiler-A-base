@@ -102,11 +102,12 @@ export function augmentTEnv(env : GlobalTypeEnv, program : Program<null>) : Glob
   });
   return { globals: newGlobs, functions: newFuns, classes: newClasses };
 }
+var additional_inits : any[] = [];
 
 export function tc(env : GlobalTypeEnv, program : Program<null>) : [Program<Type>, GlobalTypeEnv] {
   const locals = emptyLocalTypeEnv();
   const newEnv = augmentTEnv(env, program);
-  const tInits = program.inits.map(init => tcInit(env, init));
+  var tInits = program.inits.map(init => tcInit(env, init));
   const tDefs = program.funs.map(fun => tcDef(newEnv, fun));
   const tClasses = program.classes.map(cls => tcClass(newEnv, cls));
 
@@ -125,6 +126,8 @@ export function tc(env : GlobalTypeEnv, program : Program<null>) : [Program<Type
   for (let name of locals.vars.keys()) {
     newEnv.globals.set(name, locals.vars.get(name));
   }
+  tInits = tInits.concat(additional_inits);
+  console.log("tinits",tInits);
   const aprogram = {a: lastTyp, inits: tInits, funs: tDefs, classes: tClasses, stmts: tBody};
   return [aprogram, newEnv];
 }
@@ -168,7 +171,6 @@ export function tcBlock(env : GlobalTypeEnv, locals : LocalTypeEnv, stmts : Arra
   return tStmts;
 }
 
-
 export function tcStmt(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<null>) : Stmt<Type> {
   switch(stmt.tag) {
     case "assign":
@@ -195,16 +197,20 @@ export function tcStmt(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<n
           if(tExpr.elem.tag === "id")
             var counter = tExpr.elem.name;
           env.globals.set(counter,args1.a);
-          var while_cond:Expr<any> = {tag:"binop",left:tExpr.elem,right:args2,op:BinOp.Lt,};
+          var while_cond:Expr<any> = {tag:"call",name:"hasNext",arguments:[tExpr.elem,args2]};
           while_cond = tcExpr(env,locals,while_cond);
           var whilestmts:Stmt<any>[] = [];
-
-          var print_expr:Expr<any> = {tag:"builtin1",name:"print",arg:tExpr.elem};
+          var print_expr:Expr<any> = {tag:"builtin1",name:"print",arg:tExpr.left};
           whilestmts.push(tcStmt(env,locals,{tag:"expr",expr:print_expr}));
           var update_counter:Expr<any> = {tag:"literal",value:{tag:"num",value:1}};
-          var update_Expr:Expr<any> = {tag:"binop",op:BinOp.Plus,left:tExpr.elem,right:update_counter};
+          var update_Expr:Expr<any> = {tag:"call",name:"next",arguments:[tExpr.elem]};
           whilestmts.push(tcStmt(env,locals,{tag:"assign",name:counter,value:update_Expr}));
           var while_stmt:Stmt<any> = {tag:"while",cond:while_cond,body:whilestmts};
+          if(args1.tag === "literal")
+            {
+              var init_exp = {name:counter,type:args1.a,value:args1.value,a:{tag: 'none'}};
+              additional_inits.push(init_exp);
+            }
           return tcStmt(env,locals,while_stmt);
         }
         
