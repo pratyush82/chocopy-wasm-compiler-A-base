@@ -192,25 +192,24 @@ export function tcStmt(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<n
       {
         if(tExpr.iterable.tag === "construct")
         {
-          const args1 = tExpr.iterable.arguments[0];
-          const args2 = tExpr.iterable.arguments[1];
           if(tExpr.elem.tag === "id")
             var counter = tExpr.elem.name;
-          env.globals.set(counter,args1.a);
-          var while_cond:Expr<any> = {tag:"call",name:"hasNext",arguments:[tExpr.elem,args2]};
+          tExpr.elem.a = {tag:"class",name:"range"};
+          env.globals.set(counter,tExpr.elem.a);
+          var while_cond:Expr<any> = {tag:"method-call",method:"hasNext",arguments:[],obj:tExpr.elem};
           while_cond = tcExpr(env,locals,while_cond);
           var whilestmts:Stmt<any>[] = [];
           var print_expr:Expr<any> = {tag:"builtin1",name:"print",arg:tExpr.left};
           whilestmts.push(tcStmt(env,locals,{tag:"expr",expr:print_expr}));
-          var update_counter:Expr<any> = {tag:"literal",value:{tag:"num",value:1}};
-          var update_Expr:Expr<any> = {tag:"call",name:"next",arguments:[tExpr.elem]};
-          whilestmts.push(tcStmt(env,locals,{tag:"assign",name:counter,value:update_Expr}));
+          var update_Expr:Expr<any> = {tag:"method-call",method:"next",arguments:[],obj:tExpr.elem};
+          whilestmts.push(tcStmt(env,locals,{tag:"expr",expr:update_Expr}));
+          console.log(4);
           var while_stmt:Stmt<any> = {tag:"while",cond:while_cond,body:whilestmts};
-          if(args1.tag === "literal")
-            {
-              var init_exp = {name:counter,type:args1.a,value:args1.value,a:{tag: 'none'}};
-              additional_inits.push(init_exp);
-            }
+          console.log(3);
+          var init_exp = {name:counter,type:{tag:"class",name:"range"},value:{a: {tag:"class",name:"range"}, tag:"construct",name:"range",arguments: tExpr.iterable.arguments},a:tExpr.elem.a};
+          console.log(2);
+          additional_inits.push(init_exp);
+          console.log(1);
           return tcStmt(env,locals,while_stmt);
         }
         
