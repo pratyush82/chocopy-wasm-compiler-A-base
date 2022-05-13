@@ -103,6 +103,7 @@ export function augmentTEnv(env : GlobalTypeEnv, program : Program<null>) : Glob
   return { globals: newGlobs, functions: newFuns, classes: newClasses };
 }
 var additional_inits : any[] = [];
+var additional_assigns : any[] = [];
 
 export function tc(env : GlobalTypeEnv, program : Program<null>) : [Program<Type>, GlobalTypeEnv] {
   const locals = emptyLocalTypeEnv();
@@ -116,7 +117,7 @@ export function tc(env : GlobalTypeEnv, program : Program<null>) : [Program<Type
   // program.funs.forEach(fun => tcDef(env, fun));
   // Strategy here is to allow tcBlock to populate the locals, then copy to the
   // global env afterwards (tcBlock changes locals)
-  const tBody = tcBlock(newEnv, locals, program.stmts);
+  var tBody = tcBlock(newEnv, locals, program.stmts);
   var lastTyp : Type = NONE;
   if (tBody.length){
     lastTyp = tBody[tBody.length - 1].a;
@@ -127,7 +128,7 @@ export function tc(env : GlobalTypeEnv, program : Program<null>) : [Program<Type
     newEnv.globals.set(name, locals.vars.get(name));
   }
   tInits = tInits.concat(additional_inits);
-  console.log("tinits",tInits);
+  tBody = additional_assigns.concat(tBody);
   const aprogram = {a: lastTyp, inits: tInits, funs: tDefs, classes: tClasses, stmts: tBody};
   return [aprogram, newEnv];
 }
@@ -188,6 +189,30 @@ export function tcStmt(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<n
       return {a: NONE, tag: stmt.tag, name: stmt.name, value: tValExpr};
     case "expr":
       const tExpr = tcExpr(env, locals, stmt.expr);
+
+      // code to change list comp to while loop
+      // if(tExpr.tag === "list-comp")
+      // {
+      //   if(tExpr.iterable.tag === "construct")
+      //   {
+      //     if(tExpr.elem.tag === "id")
+      //       var counter = tExpr.elem.name;
+      //     tExpr.elem.a = {tag:"class",name:"range"};
+      //     env.globals.set(counter,tExpr.elem.a);
+      //     var while_cond:Expr<any> = {tag:"method-call",method:"hasNext",arguments:[],obj:tExpr.elem};
+      //     while_cond = tcExpr(env,locals,while_cond);
+      //     var whilestmts:Stmt<any>[] = [];
+      //     var print_expr:Expr<any> = {tag:"builtin1",name:"print",arg:tExpr.left};
+      //     whilestmts.push(tcStmt(env,locals,{tag:"expr",expr:print_expr}));
+      //     var update_Expr:Expr<any> = {tag:"method-call",method:"next",arguments:[],obj:tExpr.elem};
+      //     whilestmts.push(tcStmt(env,locals,{tag:"expr",expr:update_Expr}));
+      //     var while_stmt:Stmt<any> = {tag:"while",cond:while_cond,body:whilestmts};
+      //     var init_exp = {name:counter,type:{tag:"class",name:"range"},value:{a: {tag:"class",name:"range"}, tag:"construct",name:"range",arguments: tExpr.iterable.arguments},a:tExpr.elem.a};
+      //     additional_inits.push(init_exp);
+      //     return tcStmt(env,locals,while_stmt);
+      //   }
+        
+      // code to generate IR
       if(tExpr.tag === "list-comp")
       {
         if(tExpr.iterable.tag === "construct")
@@ -196,21 +221,20 @@ export function tcStmt(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<n
             var counter = tExpr.elem.name;
           tExpr.elem.a = {tag:"class",name:"range"};
           env.globals.set(counter,tExpr.elem.a);
-          var while_cond:Expr<any> = {tag:"method-call",method:"hasNext",arguments:[],obj:tExpr.elem};
-          while_cond = tcExpr(env,locals,while_cond);
-          var whilestmts:Stmt<any>[] = [];
+          var iterable_cond:Expr<any> = {tag:"method-call",method:"hasNext",arguments:[],obj:tExpr.elem};
+          iterable_cond = tcExpr(env,locals,iterable_cond);
+          tExpr.iterable_cond = iterable_cond;
+          var body:Stmt<any>[] = [];
           var print_expr:Expr<any> = {tag:"builtin1",name:"print",arg:tExpr.left};
-          whilestmts.push(tcStmt(env,locals,{tag:"expr",expr:print_expr}));
+          body.push(tcStmt(env,locals,{tag:"expr",expr:print_expr}));
           var update_Expr:Expr<any> = {tag:"method-call",method:"next",arguments:[],obj:tExpr.elem};
-          whilestmts.push(tcStmt(env,locals,{tag:"expr",expr:update_Expr}));
-          console.log(4);
-          var while_stmt:Stmt<any> = {tag:"while",cond:while_cond,body:whilestmts};
-          console.log(3);
-          var init_exp = {name:counter,type:{tag:"class",name:"range"},value:{a: {tag:"class",name:"range"}, tag:"construct",name:"range",arguments: tExpr.iterable.arguments},a:tExpr.elem.a};
-          console.log(2);
+          body.push(tcStmt(env,locals,{tag:"expr",expr:update_Expr}));
+          tExpr.body = body;
+          var init_exp = {name:counter,type:{tag:"class",name:"range"},value:{tag:"none"},a:tExpr.elem.a};
           additional_inits.push(init_exp);
-          console.log(1);
-          return tcStmt(env,locals,while_stmt);
+          var count_assign :Stmt<any> = {a:{tag:'class',name:"range"},tag:"assign",name:counter,value:{a: {tag:"class",name:"range"}, tag:"construct",name:"range",arguments: tExpr.iterable.arguments}};
+          additional_assigns.push(count_assign);
+          return {a: tExpr.a, tag: stmt.tag, expr: tExpr};
         }
         
       }
@@ -462,7 +486,9 @@ export function tcExpr(env : GlobalTypeEnv, locals : LocalTypeEnv, expr : Expr<n
       } else {
         throw new TypeCheckError("method calls require an object");
       }
-    default: throw new TypeCheckError(`unimplemented type checking for expr: ${expr}`);
+    default: 
+      console.log(expr);
+      throw new TypeCheckError(`unimplemented type checking for expr: ${expr}`);
   }
 }
 
