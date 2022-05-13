@@ -297,11 +297,13 @@ function flattenExprToExpr(e : AST.Expr<Type>, env : GlobalEnv) : [Array<IR.VarI
           value: value
         }
       });
-
+      const argpairs = e.arguments.map(a => flattenExprToVal(a, env));
+      const argvals = argpairs.map(cp => cp[2]).flat();
+      console.log("constructor :: ",e);
       return [
         [ { name: newName, type: e.a, value: { tag: "none" } }],
         [ { tag: "assign", name: newName, value: alloc }, ...assigns,
-          { tag: "expr", expr: { tag: "call", name: `${e.name}$__init__`, arguments: [{ a: e.a, tag: "id", name: newName }] } }
+          { tag: "expr", expr: { tag: "call", name: `${e.name}$__init__`, arguments: [{ a: e.a, tag: "id", name: newName },...argvals] } }
         ],
         { a: e.a, tag: "value", value: { a: e.a, tag: "id", name: newName } }
       ];
