@@ -497,7 +497,6 @@ export function tcExpr(env : GlobalTypeEnv, locals : LocalTypeEnv, expr : Expr<n
         throw new TypeCheckError("method calls require an object");
       }
     default: 
-      console.log(expr);
       throw new TypeCheckError(`unimplemented type checking for expr: ${expr}`);
   }
 }
