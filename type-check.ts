@@ -258,6 +258,10 @@ export function tcStmt(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<n
       {
         return tcListComp(env,locals,stmt,tExpr);
       }
+      if(tExpr.tag === "builtin1" && tExpr.arg.tag === "list-comp")
+      {
+        return tcListComp(env,locals,stmt,tExpr.arg);
+      }
       return {a: tExpr.a, tag: stmt.tag, expr: tExpr};
     case "if":
       var tCond = tcExpr(env, locals, stmt.cond);
