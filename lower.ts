@@ -115,7 +115,6 @@ function flattenStmt(s : AST.Stmt<Type>, blocks: Array<IR.BasicBlock<Type>>, env
     case "expr":
       if(s.tag == "expr" && s.expr.tag == "list-comp")
       {
-        console.log("list comp in ir :: ",s.expr);
         var compStartLbl = generateName("$compstart");
         var compbodyLbl = generateName("$compbody");
         var compEndLbl = generateName("$compend");
@@ -299,7 +298,6 @@ function flattenExprToExpr(e : AST.Expr<Type>, env : GlobalEnv) : [Array<IR.VarI
       });
       const argpairs = e.arguments.map(a => flattenExprToVal(a, env));
       const argvals = argpairs.map(cp => cp[2]).flat();
-      console.log("constructor :: ",e);
       return [
         [ { name: newName, type: e.a, value: { tag: "none" } }],
         [ { tag: "assign", name: newName, value: alloc }, ...assigns,

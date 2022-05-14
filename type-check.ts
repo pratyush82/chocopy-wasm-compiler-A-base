@@ -37,6 +37,19 @@ defaultGlobalFunctions.set("min", [[NUM, NUM], NUM]);
 defaultGlobalFunctions.set("pow", [[NUM, NUM], NUM]);
 defaultGlobalFunctions.set("print", [[CLASS("object")], NUM]);
 
+const nameCounters : Map<string, number> = new Map();
+function generateName(base : string) : string {
+  if(nameCounters.has(base)) {
+    var cur = nameCounters.get(base);
+    nameCounters.set(base, cur + 1);
+    return base + (cur + 1);
+  }
+  else {
+    nameCounters.set(base, 1);
+    return base + 1;
+  }
+}
+
 export const defaultTypeEnv = {
   globals: new Map(),
   functions: defaultGlobalFunctions,
@@ -219,13 +232,23 @@ export function tcStmt(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<n
         {
           if(tExpr.elem.tag === "id")
             var counter = tExpr.elem.name;
-          tExpr.elem.a = {tag:"class",name:"range"};
-          env.globals.set(counter,tExpr.elem.a);
-          var iterable_cond:Expr<any> = {tag:"method-call",method:"hasNext",arguments:[],obj:tExpr.elem};
+          var range_object_name = generateName("range_obj");
+          var range_object = tExpr.elem;
+          if(range_object.tag === "id")
+            range_object.name = range_object_name;
+            range_object.a = {tag:"class",name:"range"};
+          env.globals.set(range_object_name,tExpr.elem.a);
+          env.globals.set(counter,{tag:"number"});
+          var iterable_cond:Expr<any> = {tag:"method-call",method:"hasNext",arguments:[],obj:range_object};
           iterable_cond = tcExpr(env,locals,iterable_cond);
           tExpr.iterable_cond = iterable_cond;
           var body:Stmt<any>[] = [];
           var print_expr:Expr<any> = {tag:"builtin1",name:"print",arg:tExpr.left};
+
+          // initializing loop counter as range.curr
+          var counter_assign_stmt : Stmt<Type> = {a: {tag: 'none'},tag:"assign",name:counter, 
+                          value:{a: {tag: 'number'},tag:"lookup",field:"curr", obj: range_object}};
+          body.push(counter_assign_stmt);
           if(tExpr.cond === undefined)
           {
             body.push(tcStmt(env,locals,{tag:"expr",expr:print_expr}));
@@ -237,12 +260,14 @@ export function tcStmt(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<n
             var if_cond : Expr<any> = tExpr.cond;
             body.push(tcStmt(env,locals,{tag:"if",els:[],cond:if_cond,thn:ifbody}));
           }
-          var update_Expr:Expr<any> = {tag:"method-call",method:"next",arguments:[],obj:tExpr.elem};
+          var update_Expr:Expr<any> = {tag:"method-call",method:"next",arguments:[],obj:range_object};
           body.push(tcStmt(env,locals,{tag:"expr",expr:update_Expr}));
           tExpr.body = body;
-          var init_exp = {name:counter,type:{tag:"class",name:"range"},value:{tag:"none"},a:tExpr.elem.a};
+          var init_exp = {name:range_object_name,type:{tag:"class",name:"range"},value:{tag:"none"},a:tExpr.elem.a};
+          var loop_counter_init = {name:counter,type:{tag:"number"},value:{tag:'num',value:0},a:{tag:"number"}};
           additional_inits.push(init_exp);
-          var count_assign :Stmt<any> = {a:{tag:'class',name:"range"},tag:"assign",name:counter,value:{a: {tag:"class",name:"range"}, tag:"construct",name:"range",arguments: tExpr.iterable.arguments}};
+          additional_inits.push(loop_counter_init);
+          var count_assign :Stmt<any> = {a:{tag:'class',name:"range"},tag:"assign",name:range_object_name,value:{a: {tag:"class",name:"range"}, tag:"construct",name:"range",arguments: tExpr.iterable.arguments}};
           additional_assigns.push(count_assign);
           return {a: tExpr.a, tag: stmt.tag, expr: tExpr};
         }
