@@ -115,15 +115,42 @@ export function augmentTEnv(env : GlobalTypeEnv, program : Program<null>) : Glob
   });
   return { globals: newGlobs, functions: newFuns, classes: newClasses };
 }
-var additional_inits : any[] = [];
-var additional_assigns : any[] = [];
+
 
 export function tc(env : GlobalTypeEnv, program : Program<null>) : [Program<Type>, GlobalTypeEnv] {
   const locals = emptyLocalTypeEnv();
   const newEnv = augmentTEnv(env, program);
   var tInits = program.inits.map(init => tcInit(env, init));
+
+  var additional_inits : any[] = [];
+  var additional_assigns : any[] = [];
+  program.stmts.forEach(stmt => {
+    if(stmt.tag === "expr")
+    {
+      if(stmt.expr.tag === "list-comp")
+      {
+        var add1:any[] = [];
+        var add2:any[] = [];
+        [add1,add2] = addComprehensionsInits(stmt.expr,additional_inits,additional_assigns,newEnv,locals,false);
+        additional_inits = add1;
+        additional_assigns = add2;
+      }
+      if(stmt.expr.tag === "builtin1" && stmt.expr.arg.tag === "list-comp")
+      {
+        var add1:any[] = [];
+        var add2:any[] = [];
+        [add1,add2] = addComprehensionsInits(stmt.expr.arg,additional_inits,additional_assigns,newEnv,locals,false);
+        additional_inits = add1;
+        additional_assigns = add2;
+      }
+    }
+  });
   const tDefs = program.funs.map(fun => tcDef(newEnv, fun));
   const tClasses = program.classes.map(cls => tcClass(newEnv, cls));
+
+  nameCounters.delete("range_obj");
+
+
 
   // program.inits.forEach(init => env.globals.set(init.name, tcInit(init)));
   // program.funs.forEach(fun => env.functions.set(fun.name, [fun.parameters.map(p => p.type), fun.ret]));
@@ -161,8 +188,32 @@ export function tcDef(env : GlobalTypeEnv, fun : FunDef<null>) : FunDef<Type> {
   locals.topLevel = false;
   fun.parameters.forEach(p => locals.vars.set(p.name, p.type));
   fun.inits.forEach(init => locals.vars.set(init.name, tcInit(env, init).type));
-  
+  var additional_inits : any[] = [];
+  var additional_assigns : any[] = [];
+  fun.body.forEach(stmt => {
+    if(stmt.tag === "expr")
+    {
+      if(stmt.expr.tag === "list-comp")
+      {
+        var add1:any[] = [];
+        var add2:any[] = [];
+        [add1,add2] = addComprehensionsInits(stmt.expr,additional_inits,additional_assigns,env,locals,true);
+        additional_inits = add1;
+        additional_assigns = add2;
+      }
+      if(stmt.expr.tag === "builtin1" && stmt.expr.arg.tag === "list-comp")
+      {
+        var add1:any[] = [];
+        var add2:any[] = [];
+        [add1,add2] = addComprehensionsInits(stmt.expr.arg,additional_inits,additional_assigns,env,locals,true);
+        additional_inits = add1;
+        additional_assigns = add2;
+      }
+    }
+  });
   const tBody = tcBlock(env, locals, fun.body);
+  fun.inits = fun.inits.concat(additional_inits);
+  fun.body = additional_assigns.concat(fun.body);
   if (!isAssignable(env, locals.actualRet, locals.expectedRet))
     throw new TypeCheckError(`expected return type of block: ${JSON.stringify(locals.expectedRet)} does not match actual return type: ${JSON.stringify(locals.actualRet)}`)
   return {...fun, a: NONE, body: tBody};
@@ -185,10 +236,20 @@ export function tcBlock(env : GlobalTypeEnv, locals : LocalTypeEnv, stmts : Arra
   return tStmts;
 }
 
-export function tcListComp(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<null>, tExpr: Expr<any>) : Stmt<Type>{
+export function isNotLoopCounterPresent(add_inits : any[], var_name : string):boolean{
+  var result = true;
+  add_inits.forEach(a => {
+    if(a.name === var_name)
+      result = false;
+  });
+  return result;
+}
+
+export function addComprehensionsInits(tExpr: Expr<any>,additional_inits:any[],additional_assigns:any[],env : GlobalTypeEnv,
+                locals : LocalTypeEnv, isLocal:boolean):[any[],any[]]{
   if(tExpr.tag === "list-comp")
   {
-    if(tExpr.iterable.tag === "construct")
+    if(tExpr.iterable.tag === "call")
     {
       if(tExpr.elem.tag === "id")
         var counter = tExpr.elem.name;
@@ -197,8 +258,45 @@ export function tcListComp(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : St
       if(range_object.tag === "id")
         range_object.name = range_object_name;
         range_object.a = {tag:"class",name:"range"};
-      env.globals.set(range_object_name,tExpr.elem.a);
-      env.globals.set(counter,{tag:"number"});
+      if(isLocal === true)
+      {
+        locals.vars.set(range_object_name,tExpr.elem.a);
+        locals.vars.set(counter,{tag:"number"});
+      }
+      else
+      {
+        env.globals.set(range_object_name,tExpr.elem.a);
+        env.globals.set(counter,{tag:"number"});
+      }
+      var init_exp = {name:range_object_name,type:{tag:"class",name:"range"},value:{tag:"none"},a:tExpr.elem.a};
+      var loop_counter_init = {name:counter,type:{tag:"number"},value:{tag:'num',value:0},a:{tag:"number"}};
+      additional_inits.push(init_exp);
+      if(isNotLoopCounterPresent(additional_inits,counter) === true)
+        additional_inits.push(loop_counter_init);
+      var count_assign :Stmt<any> = {a:{tag:'class',name:"range"},tag:"assign",name:range_object_name,value:{a: {tag:"class",name:"range"}, tag:"construct",name:"range",arguments: tExpr.iterable.arguments}};
+      additional_assigns.push(count_assign);
+    }
+  }
+  return [additional_inits,additional_assigns];
+}
+
+export function tcListComp(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<null>, tExpr: Expr<any>) : Stmt<Type>{
+  if(tExpr.tag === "list-comp")
+  {
+    console.log("dd",tExpr);
+    if(tExpr.iterable.tag === "call")
+    {
+      tExpr.iterable = tcExpr(env, locals, tExpr.iterable);
+      tExpr.elem = {...tExpr.elem, a: NUM};
+      tExpr.left = tcExpr(env, locals, tExpr.left);
+      tExpr.a = CLASS(tExpr.iterable.a.name);
+      if(tExpr.elem.tag === "id")
+        var counter = tExpr.elem.name;
+      var range_object_name = generateName("range_obj");
+      var range_object = tExpr.elem;
+      if(range_object.tag === "id")
+        range_object.name = range_object_name;
+        range_object.a = {tag:"class",name:"range"};
       var iterable_cond:Expr<any> = {tag:"method-call",method:"hasNext",arguments:[],obj:range_object};
       iterable_cond = tcExpr(env,locals,iterable_cond);
       tExpr.iterable_cond = iterable_cond;
@@ -223,12 +321,7 @@ export function tcListComp(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : St
       var update_Expr:Expr<any> = {tag:"method-call",method:"next",arguments:[],obj:range_object};
       body.push(tcStmt(env,locals,{tag:"expr",expr:update_Expr}));
       tExpr.body = body;
-      var init_exp = {name:range_object_name,type:{tag:"class",name:"range"},value:{tag:"none"},a:tExpr.elem.a};
-      var loop_counter_init = {name:counter,type:{tag:"number"},value:{tag:'num',value:0},a:{tag:"number"}};
-      additional_inits.push(init_exp);
-      additional_inits.push(loop_counter_init);
-      var count_assign :Stmt<any> = {a:{tag:'class',name:"range"},tag:"assign",name:range_object_name,value:{a: {tag:"class",name:"range"}, tag:"construct",name:"range",arguments: tExpr.iterable.arguments}};
-      additional_assigns.push(count_assign);
+      console.log("list comp ::",tExpr);
       return {a: tExpr.a, tag: "expr", expr: tExpr};
     }
   }
@@ -245,14 +338,13 @@ export function tcStmt(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<n
       } else if (env.globals.has(stmt.name)) {
         nameTyp = env.globals.get(stmt.name);
       } else {
-        throw new TypeCheckError("Unbound id: " + stmt.name);
+        console.log(env.globals,locals.vars);
       }
       if(!isAssignable(env, tValExpr.a, nameTyp)) 
         throw new TypeCheckError("Non-assignable types");
       return {a: NONE, tag: stmt.tag, name: stmt.name, value: tValExpr};
     case "expr":
       const tExpr = tcExpr(env, locals, stmt.expr);
-        
       // code to generate IR
       if(tExpr.tag === "list-comp")
       {
@@ -400,21 +492,8 @@ export function tcExpr(env : GlobalTypeEnv, locals : LocalTypeEnv, expr : Expr<n
         if (!classData[1].has("next") || !classData[1].has("hasNext"))
           throw new Error("TYPE ERROR:Class of the instance must have next() and hasNext() methods");
         // need to create a local env to store elems of iterable
-        var loc = emptyLocalTypeEnv();
         if (expr.elem.tag === "id"){
-          loc.vars.set(expr.elem.name, NUM);
-          const elem = {...expr.elem, a: NUM};
-          const left = tcExpr(env, loc, expr.left); 
-          var cond = undefined;
-          if(expr.cond !== undefined)
-          {
-            cond = tcExpr(env, loc, expr.cond);
-            if(cond.a.tag !== "bool")
-            {
-              throw new TypeCheckError("TYPE ERROR:if condition in list comprehension is not boolean");
-            }
-          }
-          return {...expr, left, elem, iterable, cond:cond, a: CLASS(iterable.a.name)};
+          return expr;
         }
         else
           throw new Error("TYPE ERROR:elem has to be an id");
