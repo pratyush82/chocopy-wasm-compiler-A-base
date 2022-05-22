@@ -190,6 +190,7 @@ export function tcDef(env : GlobalTypeEnv, fun : FunDef<null>) : FunDef<Type> {
   fun.inits.forEach(init => locals.vars.set(init.name, tcInit(env, init).type));
   var additional_inits : any[] = [];
   var additional_assigns : any[] = [];
+  var num_comps = 0;
   fun.body.forEach(stmt => {
     if(stmt.tag === "expr")
     {
@@ -200,6 +201,7 @@ export function tcDef(env : GlobalTypeEnv, fun : FunDef<null>) : FunDef<Type> {
         [add1,add2] = addComprehensionsInits(stmt.expr,additional_inits,additional_assigns,env,locals,true);
         additional_inits = add1;
         additional_assigns = add2;
+        num_comps = num_comps+1;
       }
       if(stmt.expr.tag === "builtin1" && stmt.expr.arg.tag === "list-comp")
       {
@@ -208,9 +210,13 @@ export function tcDef(env : GlobalTypeEnv, fun : FunDef<null>) : FunDef<Type> {
         [add1,add2] = addComprehensionsInits(stmt.expr.arg,additional_inits,additional_assigns,env,locals,true);
         additional_inits = add1;
         additional_assigns = add2;
+        num_comps = num_comps+1;
       }
     }
   });
+  var prev_num_comps = nameCounters.get("range_obj");
+  prev_num_comps = prev_num_comps-num_comps;
+  nameCounters.set("range_obj",prev_num_comps);
   const tBody = tcBlock(env, locals, fun.body);
   fun.inits = fun.inits.concat(additional_inits);
   fun.body = additional_assigns.concat(fun.body);
@@ -283,7 +289,6 @@ export function addComprehensionsInits(tExpr: Expr<any>,additional_inits:any[],a
 export function tcListComp(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : Stmt<null>, tExpr: Expr<any>) : Stmt<Type>{
   if(tExpr.tag === "list-comp")
   {
-    console.log("dd",tExpr);
     if(tExpr.iterable.tag === "call")
     {
       tExpr.iterable = tcExpr(env, locals, tExpr.iterable);
@@ -321,7 +326,6 @@ export function tcListComp(env : GlobalTypeEnv, locals : LocalTypeEnv, stmt : St
       var update_Expr:Expr<any> = {tag:"method-call",method:"next",arguments:[],obj:range_object};
       body.push(tcStmt(env,locals,{tag:"expr",expr:update_Expr}));
       tExpr.body = body;
-      console.log("list comp ::",tExpr);
       return {a: tExpr.a, tag: "expr", expr: tExpr};
     }
   }

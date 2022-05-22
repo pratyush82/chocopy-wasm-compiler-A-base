@@ -26,7 +26,6 @@ export function lowerProgram(p : AST.Program<Type>, env : GlobalEnv) : IR.Progra
     var firstBlock : IR.BasicBlock<Type> = {  a: p.a, label: generateName("$startProg"), stmts: [] }
     blocks.push(firstBlock);
     var inits = flattenStmts(p.stmts, blocks, env);
-    console.log("2");
     return {
         a: p.a,
         funs: lowerFunDefs(p.funs, env),
@@ -116,7 +115,6 @@ function flattenStmt(s : AST.Stmt<Type>, blocks: Array<IR.BasicBlock<Type>>, env
     case "expr":
       if(s.tag == "expr" && s.expr.tag == "list-comp")
       {
-        console.log(s.expr);
         var compStartLbl = generateName("$compstart");
         var compbodyLbl = generateName("$compbody");
         var compEndLbl = generateName("$compend");
@@ -124,9 +122,7 @@ function flattenStmt(s : AST.Stmt<Type>, blocks: Array<IR.BasicBlock<Type>>, env
         pushStmtsToLastBlock(blocks, { tag: "jmp", lbl: compStartLbl })
         blocks.push({  a: s.a, label: compStartLbl, stmts: [] })
         var [cinits, cstmts, cexpr] = flattenExprToVal(s.expr.iterable_cond, env);
-        console.log("root4");
         pushStmtsToLastBlock(blocks, ...cstmts, { tag: "ifjmp", cond: cexpr, thn: compbodyLbl, els: compEndLbl });
-        console.log("root5");
 
         
         blocks.push({  a: s.a, label: compbodyLbl, stmts: [] })
