@@ -84,6 +84,7 @@ export type Expr<A> =
   | {  a?: A, tag: "list-comp", left: Expr<A>, elem: Expr<A>, iterable: Expr<A>, cond?: Expr<A>}
   | Lambda<A>
   | {  a?: A, tag: "if-expr", cond: Expr<A>, thn: Expr<A>, els: Expr<A> }
+  | {  a?: A, tag: "construct-list", items: Array<Expr<A>> }
 
 // add annotation for reporting row/col in errors
   | {  a?: A, tag: "construct-list", items: Array<Expr<A>> } // [1,2,3] or [A(), A()]

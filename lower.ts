@@ -174,13 +174,19 @@ function flattenStmts(s : Array<AST.Stmt<Annotation>>, blocks: Array<IR.BasicBlo
 
 function flattenListComp(e: any, env : GlobalEnv, blocks: Array<IR.BasicBlock<Annotation>>) : [Array<IR.VarInit<Annotation>>, Array<IR.Stmt<Annotation>>, IR.Expr<Annotation>, Array<IR.Class<Annotation>>] {
   // console.log("list comp in ir", e, "----------------");
+  var compPreStartLbl = generateName("$compprestart");
   var compStartLbl = generateName("$compstart");
   var compbodyLbl = generateName("$compbody");
   var compEndLbl = generateName("$compend");
   var listAddLbl = generateName("$listadd");
-  // var newListName = generateName("$newList");
   var localenv = env;
-  localenv.labels.push(compStartLbl,compbodyLbl,compEndLbl,listAddLbl);
+  localenv.labels.push(compPreStartLbl,compStartLbl,compbodyLbl,compEndLbl,listAddLbl);
+
+  blocks.push({  a: e.a, label: compPreStartLbl, stmts: [] })
+  var createList: AST.Expr<AST.Annotation> = {tag:"construct-list", items:[], a:{...e.a, type:{tag:"empty"}}};
+  var [linits, lstmts, lexpr, lclass] = flattenExprToExpr(createList, blocks, localenv);
+  pushStmtsToLastBlock(blocks, ...lstmts);
+  console.log("initial lexpr", lexpr);
 
   // start
   blocks.push({  a: e.a, label: compStartLbl, stmts: [] })
@@ -218,8 +224,18 @@ function flattenListComp(e: any, env : GlobalEnv, blocks: Array<IR.BasicBlock<An
   var [binits, bstmts, bexpr, beclass] = flattenExprToVal(e.left, blocks, localenv);
   bodyinits.concat(binits);
   // console.log("binits", binits, "bstmts", bstmts, "bexpr", bexpr, "bodyinits", bodyinits);
+  console.log("bexpr", bexpr);
+  // NEED TO USE THIS VALUE
 
   // display (NEED TO ADD TO ARRAY)
+  var listElem: AST.Expr<AST.Annotation> = {tag:"construct-list", items:[e.left], a:{...e.a, tag:{tag:"list", itemType:e.left.a.type}}};
+  // var [minits, mstmts, mexpr, mclass] = flattenExprToExpr(listElem, blocks, localenv);
+  // @ts-ignore
+  var concatList: AST.Stmt<AST.Annotation> = {tag:"assign", name: lexpr.value.name, value: {tag:"binop", op:0, left:lexpr.value, right:listElem, a:listElem.a}};
+  var [bodyinits1,bodyclasses1] = flattenStmt(concatList, blocks, localenv);
+  bodyinits.concat(bodyinits1);
+  // console.log("bi1", bodyinits1, bodyinits1[0].value);
+  console.log("now lexpr", lexpr);
   var displayExpr : AST.Expr<AST.Annotation> = {tag:"builtin1", name:"print", arg:e.left, a:e.left.a};
   var disp: AST.Stmt<AST.Annotation> = {tag:"expr", expr: displayExpr, a:{ ...e.a, type: NONE }};
   // var [einits, estmts, eexpr] = flattenExprToVal(displayExpr, localenv);
@@ -230,30 +246,19 @@ function flattenListComp(e: any, env : GlobalEnv, blocks: Array<IR.BasicBlock<An
 
   // end
   blocks.push({  a: e.a, label: compEndLbl, stmts: [] })
+  // @ts-ignore
+  // console.log(e.left, lexpr.value, lexpr.a);
+
   if (e.cond)
-    return [[...cinits, ...bodyinits, ...body_init, ...dinits, ...binits]
-      , [...cstmts, ...dstmts, ...bstmts]
-      , {
-        a: e.a,
-        tag: "value",
-        value: {
-          a: { ...e.a, type: NUM },
-          tag: "id",
-          name: elem
-        },
-      },[...ceclass, ...bodyclasses, ...body_class, ...declass, ...beclass]]
+    return [[...linits, ...cinits, ...bodyinits, ...dinits, ...binits, ...bodyinits1, ...body_init]
+      , [...lstmts, ...cstmts, ...dstmts, ...bstmts]
+      , lexpr
+      , [...lclass, ...ceclass, ...bodyclasses, ...declass, ...beclass, ...bodyclasses1, ...body_class]]
   else
-    return [[...cinits, ...bodyinits, ...body_init, ...binits]
-      , [...cstmts, ...bstmts]
-      , {
-        a: e.a,
-        tag: "value",
-        value: {
-          a: { ...e.a, type: NUM },
-          tag: "id",
-          name: elem
-        },
-      },[...ceclass, ...bodyclasses, ...body_class, ...beclass]]
+    return [[...linits, ...cinits, ...bodyinits, ...binits, ...bodyinits1, ...body_init]
+      , [...lstmts, ...cstmts, ...bstmts]
+      , lexpr
+      , [...lclass, ...ceclass, ...bodyclasses, ...beclass, ...bodyclasses1, ...body_class]]
 }
 
 function flattenStmt(s : AST.Stmt<Annotation>, blocks: Array<IR.BasicBlock<Annotation>>, env : GlobalEnv) : [Array<IR.VarInit<Annotation>>, Array<IR.Class<Annotation>>] {

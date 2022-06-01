@@ -200,17 +200,19 @@ export function isValidType(env: GlobalTypeEnv, t: Type) : boolean {
   // TODO: handle all other newer non-class types here
 
   // At this point we know t is a CLASS
+  // @ts-ignore
   if(!env.classes.has(t.name)) {
     return false;  
   }
-  
+  // @ts-ignore
   let [_fieldsTy, _methodsTy, typeparams] = env.classes.get(t.name);
-
+  // @ts-ignore
   if(t.params.length !== typeparams.length) {
     return false; 
   }
-
+  // @ts-ignore
   return zip(typeparams, t.params).reduce((isValid, [typevar, typeparam]) => {
+    // @ts-ignore
     return isValid && isValidType(env, typeparam);
   }, true);
 }
@@ -292,7 +294,9 @@ export function specializeType(env: Map<string, Type>, t: Type) : Type {
   }
 
   // at this point t has to be a class type
+  // @ts-ignore
   let specializedParams = t.params.map(p => specializeType(env, p));
+  // @ts-ignore
   return CLASS(t.name, specializedParams);
 }
 
