@@ -183,6 +183,14 @@ function flattenListComp(e: any, env : GlobalEnv, blocks: Array<IR.BasicBlock<An
   var lengthAssign : AST.Stmt<AST.Annotation>[] = [{tag:"assign", destruct: lengthdestructureAss, value: lengthCall,a:{ ...e.a, type: NONE }}];
   var [lengthinits,lengthclasses] = flattenStmts(lengthAssign, blocks, localenv);
   
+  var setLenFromBigNumAddr : IR.Stmt<Annotation> = {
+    tag: "assign",
+    a: e.a,
+    name: newListLen,
+    value: { a: {...e.a, type: {tag: "number"}}, tag: "call", name: "$bignum_to_i32", arguments: [{tag:"id",name:newListLen}] } 
+  };
+  pushStmtsToLastBlock(blocks, setLenFromBigNumAddr);
+
   const listAlloc: IR.Expr<Annotation> = {
     tag: "alloc",
     amount: {tag:"id",name:newListLen},
@@ -190,13 +198,13 @@ function flattenListComp(e: any, env : GlobalEnv, blocks: Array<IR.BasicBlock<An
   var storeBigLength: IR.Stmt<Annotation> = {
     tag: "store",
     start: { tag: "id", name: newListName },
-    offset: { tag: "wasmint", value: 0 },
+    offset: { tag: "wasmint", value: 0},
     value: {tag:"id",name:newListLen},
   };
   var storeLength: IR.Stmt<Annotation> = {
     tag: "store",
     start: { tag: "id", name: newListName },
-    offset: { tag: "wasmint", value: 1 },
+    offset: { tag: "wasmint", value: 1},
     value: {tag:"id",name:newListLen}
   };
   pushStmtsToLastBlock(blocks, { tag: "assign", name: newListName, value: listAlloc });
@@ -258,10 +266,19 @@ function flattenListComp(e: any, env : GlobalEnv, blocks: Array<IR.BasicBlock<An
 
   // display (NEED TO ADD TO ARRAY)
   var displayExpr : AST.Expr<AST.Annotation> = {tag:"builtin1", name:"print", arg:e.left, a:e.left.a};
+  
   var disp: AST.Stmt<AST.Annotation> = {tag:"expr", expr: displayExpr, a:{ ...e.a, type: NONE }};
   // var [einits, estmts, eexpr] = flattenExprToVal(displayExpr, localenv);
   var [body_init, body_class] = flattenStmt(disp, blocks, localenv);
-  console.log("disp",disp);
+
+  var setIteratorFromBigNumAddr : IR.Stmt<Annotation> = {
+    tag: "assign",
+    a: e.a,
+    name: newListIterator,
+    value: { a: {...e.a, type: {tag: "number"}}, tag: "call", name: "$bignum_to_i32", arguments: [{tag:"id",name:newListIterator}] } 
+  };
+  pushStmtsToLastBlock(blocks, setIteratorFromBigNumAddr);
+
   var storeExpr : IR.Stmt<Annotation> = {
     tag: "store",
     start: { tag: "id", name: newListName },
@@ -277,19 +294,34 @@ function flattenListComp(e: any, env : GlobalEnv, blocks: Array<IR.BasicBlock<An
   var return_type_a = e.a;
   return_type_a.type = {tag:"list",itemType:{tag:"number"}};
   if (e.cond)
-    return [[...cinits, ...bodyinits, ...body_init, ...dinits, ...binits]
+    return [[...lengthinits,...cinits, ...iterinits, ...bodyinits, ...dinits, ...binits, ...body_init,
+      {
+        name: newListName,
+        type: e.a.type,
+        value: { a: e.a, tag: "none" },
+      },
+      {
+        name: newListLen,
+        type: e.a.type,
+        value: { a: e.a, tag: "none" }
+      },
+      {
+        name: newListIterator,
+        type: e.a.type,
+        value: { a: e.a, tag: "none" }
+      }]
       , [...cstmts, ...dstmts, ...bstmts]
       , {
-        a: e.a,
-        tag: "value",
-        value: {
-          a: { ...e.a, type: NUM },
-          tag: "id",
-          name: elem
+          a: return_type_a,
+          tag: "value",
+          value: {
+            a: e.a,
+            tag: "id",
+            name: newListName
         },
-      },[...ceclass, ...bodyclasses, ...body_class, ...declass, ...beclass]]
+      },[...lengthclasses,...ceclass, ...iterclasses, ...bodyclasses, ...declass, ...beclass, ...body_class]]
   else
-    return [[...iterinits,...lengthinits, ...cinits, ...bodyinits, ...body_init, ...binits,
+    return [[...lengthinits,...cinits, ...iterinits, ...bodyinits, ...binits, ...body_init,
       {
         name: newListName,
         type: e.a.type,
@@ -314,7 +346,7 @@ function flattenListComp(e: any, env : GlobalEnv, blocks: Array<IR.BasicBlock<An
             tag: "id",
             name: newListName
         },
-      },[...iterclasses,...lengthclasses, ...ceclass, ...bodyclasses, ...body_class, ...beclass]]
+      },[...lengthclasses,...ceclass, ...iterclasses, ...bodyclasses, ...beclass, ...body_class]]
 }
 
 
