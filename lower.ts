@@ -349,6 +349,56 @@ function flattenListComp(e: any, env : GlobalEnv, blocks: Array<IR.BasicBlock<An
       },[...lengthclasses,...ceclass, ...iterclasses, ...bodyclasses, ...beclass, ...body_class]]
 }
 
+function flattenGenComp(e: any, env : GlobalEnv, blocks: Array<IR.BasicBlock<Annotation>>) : [Array<IR.VarInit<Annotation>>, Array<IR.Stmt<Annotation>>, IR.Expr<Annotation>, 
+                                                                        Array<IR.Class<Annotation>>] {
+  
+  var list_inits, list_stmts, list_return, list_classes;
+  [list_inits, list_stmts, list_return, list_classes] = flattenListComp(e,env,blocks);
+
+  const newGeneratorName = generateName("newGenerator");
+  const genObjLen = generateName("genObjLen");
+  
+  if(list_return.tag == "value" && list_return.value.tag == "id")
+        {
+          var length_assign : IR.Stmt<Annotation> =  { a: e.a, tag: "assign", name: genObjLen, value: 
+                                      {tag:"call",name:"len",arguments:[{...e.a,tag:"id",name:list_return.value.name}]}};
+          list_stmts.push(length_assign);
+          var update_length : IR.Stmt<Annotation> =  { a: e.a, tag: "assign", name: genObjLen, value: 
+                                      {tag:"binop",op: AST.BinOp.Plus,left:{tag:"wasmint",value:2},right:{tag:"id",name:genObjLen}}};
+          list_stmts.push(update_length);
+          var generator_initialize_stmt : IR.Stmt<Annotation> =  { a: e.a, tag: "assign", name: newGeneratorName, value: 
+                                      {tag:"alloc",amount: {tag:"id", name:genObjLen}}};
+          list_stmts.push(generator_initialize_stmt);
+          var generator_assign_stmt : IR.Stmt<Annotation> =  { a: e.a, tag: "assign", name: newGeneratorName, value: {tag:"call", name:"Generator$new", 
+                          arguments: [{...e.a,tag:"id",name:newGeneratorName},{...e.a,tag:"id",name:list_return.value.name}]}};
+          list_stmts.push(generator_assign_stmt);
+        }
+  
+
+
+  return [[...list_inits,
+    {
+      name: newGeneratorName,
+      type: {tag:"number"},
+      value: { a: e.a, tag: "none" },
+    },
+    {
+      name: genObjLen,
+      type: {tag:"class",name:"Generator",params:[]},
+      value: { a: e.a, tag: "none" },
+    }]
+    , [...list_stmts]
+    , {
+        a: e.a,
+        tag: "value",
+        value: {
+          a: e.a,
+          tag: "id",
+          name: newGeneratorName
+      },
+    },[...list_classes]]
+}
+
 
 function flattenStmt(s : AST.Stmt<Annotation>, blocks: Array<IR.BasicBlock<Annotation>>, env : GlobalEnv) : [Array<IR.VarInit<Annotation>>, Array<IR.Class<Annotation>>] {
   switch(s.tag) {
@@ -811,7 +861,7 @@ function flattenExprToExpr(e : AST.Expr<Annotation>, blocks: Array<IR.BasicBlock
       if (e.typ === "set/dict") // for sets and dictionaries
         return flattenListComp(e, env, blocks);  // func call to be changed based on the implementation of sets and dictionaries
       else // for generators
-        return flattenListComp(e, env, blocks); // func call to be changed based on the implementation of generators
+        return flattenGenComp(e, env, blocks); // func call to be changed based on the implementation of generators
     case "construct-list":
       const newListName = generateName("newList");
       const listAlloc: IR.Expr<Annotation> = {
